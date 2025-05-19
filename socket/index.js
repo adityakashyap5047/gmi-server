@@ -26,6 +26,35 @@ export default function initSocket(io) {
             io.emit("location-data", allUserData);
         });
 
+        socket.on("user-logout", async ({ userId }) => {
+            if (!userId) return;
+
+            console.log(`User logged out: ${userId}`);
+        
+            activeUsers.delete(userId);
+
+            for (const [sockId, uid] of socketToUser.entries()) {
+                if (uid === userId) {
+                    socketToUser.delete(sockId);
+                break;
+                }
+            }
+
+            const allUserData = await Promise.all(
+                [...activeUsers.entries()].map(async ([id, loc]) => {
+                const user = await userModel.findById(id).select("email");
+                return {
+                    _id: id,
+                    email: user?.email || "Unknown",
+                    location: { lat: loc.lat, lng: loc.lng },
+                };
+                })
+            );
+
+            io.emit("location-data", allUserData);
+        });
+
+
         socket.on("disconnect", async () => {
             console.log("User disconnected:", socket.id);
 
