@@ -1,0 +1,54 @@
+import userModel from "../models/user.model.js";
+
+const socketToUser = new Map();
+const activeUsers = new Map();
+
+export default function initSocket(io) {
+
+    io.on("connection", (socket) => {
+    console.log("User connected:", socket.id);
+
+        socket.on("location-update", async ({ userId, lat, lng }) => {
+            if (!userId || !lat || !lng) return;
+            activeUsers.set(userId, { lat, lng, socketId: socket.id });
+            socketToUser.set(socket.id, userId);
+
+            const allUserData = await Promise.all(
+            [...activeUsers.entries()].map(async ([id, loc]) => {
+                const user = await userModel.findById(id).select("email");
+                return {
+                    _id: id,
+                    email: user?.email || "Unknown",
+                    location: { lat: loc.lat, lng: loc.lng },
+                };
+            })
+            );
+            io.emit("location-data", allUserData);
+        });
+
+        socket.on("disconnect", async () => {
+            console.log("User disconnected:", socket.id);
+
+            const userId = socketToUser.get(socket.id);
+            if (userId) {
+                activeUsers.delete(userId);
+                socketToUser.delete(socket.id); 
+                console.log(`Removed user ${userId} from activeUsers`);
+            }
+
+            // Broadcast updated user list
+            const allUserData = await Promise.all(
+                [...activeUsers.entries()].map(async ([id, loc]) => {
+                    const user = await userModel.findById(id).select("email");
+                    return {
+                        _id: id,
+                        email: user?.email || "Unknown",
+                        location: { lat: loc.lat, lng: loc.lng },
+                    };
+                })
+            );
+
+            io.emit("location-data", allUserData);
+        });
+    });
+}
