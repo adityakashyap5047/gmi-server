@@ -73,6 +73,5 @@ async function broadcastUserLocations(io) {
       };
     })
   );
-
   io.emit("location-data", allUserData);
 }
