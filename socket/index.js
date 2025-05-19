@@ -10,20 +10,21 @@ export default function initSocket(io) {
 
         socket.on("location-update", async ({ userId, lat, lng }) => {
             if (!userId || !lat || !lng) return;
+            
             activeUsers.set(userId, { lat, lng, socketId: socket.id });
             socketToUser.set(socket.id, userId);
 
-            const allUserData = await Promise.all(
-            [...activeUsers.entries()].map(async ([id, loc]) => {
-                const user = await userModel.findById(id).select("email");
-                return {
-                    _id: id,
-                    email: user?.email || "Unknown",
-                    location: { lat: loc.lat, lng: loc.lng },
-                };
-            })
-            );
-            io.emit("location-data", allUserData);
+            await broadcastUserLocations(io);
+        });
+
+        // Visibility toggle
+        socket.on("visibility-toggle", async ({ userId, visible }) => {
+            if (!visible) {
+                activeUsers.delete(userId);
+                console.log(`User ${userId} set location to hidden`);
+                
+                await broadcastUserLocations(io);
+            }
         });
 
         socket.on("user-logout", async ({ userId }) => {
@@ -40,18 +41,7 @@ export default function initSocket(io) {
                 }
             }
 
-            const allUserData = await Promise.all(
-                [...activeUsers.entries()].map(async ([id, loc]) => {
-                const user = await userModel.findById(id).select("email");
-                return {
-                    _id: id,
-                    email: user?.email || "Unknown",
-                    location: { lat: loc.lat, lng: loc.lng },
-                };
-                })
-            );
-
-            io.emit("location-data", allUserData);
+            await broadcastUserLocations(io);
         });
 
 
@@ -66,18 +56,23 @@ export default function initSocket(io) {
             }
 
             // Broadcast updated user list
-            const allUserData = await Promise.all(
-                [...activeUsers.entries()].map(async ([id, loc]) => {
-                    const user = await userModel.findById(id).select("email");
-                    return {
-                        _id: id,
-                        email: user?.email || "Unknown",
-                        location: { lat: loc.lat, lng: loc.lng },
-                    };
-                })
-            );
-
-            io.emit("location-data", allUserData);
+            await broadcastUserLocations(io);
         });
     });
+}
+
+// Helper to send all visible users
+async function broadcastUserLocations(io) {
+  const allUserData = await Promise.all(
+    [...activeUsers.entries()].map(async ([id, loc]) => {
+      const user = await userModel.findById(id).select("email");
+      return {
+        _id: id,
+        email: user?.email || "Unknown",
+        location: { lat: loc.lat, lng: loc.lng },
+      };
+    })
+  );
+
+  io.emit("location-data", allUserData);
 }
